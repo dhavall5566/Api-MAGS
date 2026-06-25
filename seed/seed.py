@@ -12,6 +12,7 @@ from app.models import (
     Consumption,
     PowderCoating,
     Profile,
+    PurchaseOrder,
     Scrap,
     SeriesName,
     StockInward,
@@ -63,6 +64,7 @@ def run_seed() -> None:
             "powder_coating": seed_entity_table(db, PowderCoating, load_json("powder_coating")),
             "scrap": seed_entity_table(db, Scrap, load_json("scrap")),
             "challans": seed_entity_table(db, Challan, load_json("challans")),
+            "purchase_orders": seed_entity_table(db, PurchaseOrder, load_json("purchase_orders")),
         }
 
         config_entries = {

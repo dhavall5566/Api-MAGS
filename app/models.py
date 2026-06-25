@@ -75,6 +75,13 @@ class Challan(Base):
     data: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
 
+class PurchaseOrder(Base):
+    __tablename__ = "purchase_orders"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
 class AppConfig(Base):
     """Key-value store for dashboard stats, reports, notifications."""
 

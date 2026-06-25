@@ -9,6 +9,7 @@ from app.routers import (
     dashboard,
     powder_coating,
     profiles,
+    purchase_orders,
     reports,
     scrap,
     series,
@@ -41,6 +42,7 @@ app.include_router(consumption.router)
 app.include_router(powder_coating.router)
 app.include_router(scrap.router)
 app.include_router(challans.router)
+app.include_router(purchase_orders.router)
 app.include_router(dashboard.router)
 app.include_router(reports.router)
 app.include_router(uploads.router)
