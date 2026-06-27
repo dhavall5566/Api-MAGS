@@ -168,12 +168,18 @@ def profile_rows_as_dicts(rows) -> list[dict]:
     return [normalize_profile_data(row.data) for row in rows]
 
 
+MAGS_OUTWARD_CHALLAN_VENDOR_ID = "ven-mags-oc"
+
+
 def normalize_vendor_data(data: dict) -> dict:
     """Normalize vendor JSON and validate vendor type."""
     allowed_types = {"delivery", "powder_coating", "outward_challan"}
     normalized = dict(data)
     vendor_type = str(normalized.get("vendorType") or "").strip()
     if vendor_type not in allowed_types:
+        vendor_type = "delivery"
+    vendor_id = str(normalized.get("id") or "").strip()
+    if vendor_type == "outward_challan" and vendor_id != MAGS_OUTWARD_CHALLAN_VENDOR_ID:
         vendor_type = "delivery"
     normalized["vendorType"] = vendor_type
     for key in ("personName", "phoneNo", "email", "gstNo"):
