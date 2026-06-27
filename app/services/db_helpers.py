@@ -403,18 +403,32 @@ def stock_inward_rows_as_dicts(rows) -> list[dict]:
 
 
 def upsert_entity(db: Session, model, item: dict) -> dict:
-    entity_id = item.get("id")
-    if not entity_id:
-        raise ValueError("Entity id is required")
-    row = db.get(model, entity_id)
-    if row:
-        row.data = item
-    else:
-        row = model(id=entity_id, data=item)
-        db.add(row)
-    db.commit()
-    db.refresh(row)
-    return item
+    return upsert_entities(db, model, [item])[0]
+
+
+def upsert_entities(db: Session, model, items: list[dict]) -> list[dict]:
+    if not items:
+        return []
+
+    try:
+        for item in items:
+            entity_id = item.get("id")
+            if not entity_id:
+                raise ValueError("Entity id is required")
+            row = db.get(model, entity_id)
+            if row:
+                row.data = item
+            else:
+                db.add(model(id=entity_id, data=item))
+        db.commit()
+        for item in items:
+            row = db.get(model, item["id"])
+            if row:
+                db.refresh(row)
+        return items
+    except Exception:
+        db.rollback()
+        raise
 
 
 def delete_entity(db: Session, model, entity_id: str) -> bool:

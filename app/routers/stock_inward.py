@@ -8,6 +8,7 @@ from app.services.db_helpers import (
     normalize_stock_inward_data,
     split_stock_inward_entry,
     stock_inward_rows_as_dicts,
+    upsert_entities,
     upsert_entity,
 )
 
@@ -25,6 +26,26 @@ def create_stock_inward(body: dict, db: Session = Depends(get_db)):
     if not body.get("id"):
         raise HTTPException(status_code=400, detail="id is required")
     saved = upsert_entity(db, StockInward, normalize_stock_inward_data(body))
+    return {"stockInward": saved}
+
+
+@router.post("/batch")
+def create_stock_inward_batch(body: dict, db: Session = Depends(get_db)):
+    raw_entries = body.get("entries")
+    if not isinstance(raw_entries, list) or not raw_entries:
+        raise HTTPException(status_code=400, detail="entries array is required")
+
+    normalized_items: list[dict] = []
+    for entry in raw_entries:
+        if not isinstance(entry, dict) or not entry.get("id"):
+            raise HTTPException(status_code=400, detail="each entry requires an id")
+        normalized_items.append(normalize_stock_inward_data(entry))
+
+    try:
+        saved = upsert_entities(db, StockInward, normalized_items)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     return {"stockInward": saved}
 
 
