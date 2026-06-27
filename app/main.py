@@ -14,6 +14,7 @@ from app.routers import (
     scrap,
     series,
     stock,
+    stock_inward,
     uploads,
     users,
     vendors,
@@ -38,6 +39,7 @@ app.include_router(users.router)
 app.include_router(vendors.router)
 app.include_router(series.router)
 app.include_router(stock.router)
+app.include_router(stock_inward.router)
 app.include_router(consumption.router)
 app.include_router(powder_coating.router)
 app.include_router(scrap.router)
