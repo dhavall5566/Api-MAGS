@@ -115,6 +115,17 @@ def normalize_challan_data(data: dict) -> dict:
                 normalized.pop("totalWeightAllProfiles", None)
         else:
             normalized.pop("totalWeightAllProfiles", None)
+        normalized.pop("outwardChallanVendorId", None)
+        normalized.pop("outwardChallanVendorName", None)
+    else:
+        normalized.pop("totalBundles", None)
+        normalized.pop("totalWeightManual", None)
+        normalized.pop("totalNoOfProfiles", None)
+        normalized.pop("totalWeightAllProfiles", None)
+    if normalized.get("type") == "powder_coating":
+        if not normalized.get("projectName") and normalized.get("remarks"):
+            normalized["projectName"] = normalized["remarks"]
+        normalized.pop("remarks", None)
         for key in ("outwardChallanVendorId", "outwardChallanVendorName"):
             value = normalized.get(key)
             if isinstance(value, str):
@@ -125,17 +136,6 @@ def normalize_challan_data(data: dict) -> dict:
                     normalized.pop(key, None)
             elif value is None:
                 normalized.pop(key, None)
-    else:
-        normalized.pop("totalBundles", None)
-        normalized.pop("totalWeightManual", None)
-        normalized.pop("totalNoOfProfiles", None)
-        normalized.pop("totalWeightAllProfiles", None)
-        normalized.pop("outwardChallanVendorId", None)
-        normalized.pop("outwardChallanVendorName", None)
-    if normalized.get("type") == "powder_coating":
-        if not normalized.get("projectName") and normalized.get("remarks"):
-            normalized["projectName"] = normalized["remarks"]
-        normalized.pop("remarks", None)
         coating_rate = normalized.get("coatingRate")
         if coating_rate is not None and coating_rate != "":
             try:
@@ -146,6 +146,9 @@ def normalize_challan_data(data: dict) -> dict:
             normalized.pop("coatingRate", None)
     else:
         normalized.pop("coatingRate", None)
+        if normalized.get("type") != "powder_coating":
+            normalized.pop("outwardChallanVendorId", None)
+            normalized.pop("outwardChallanVendorName", None)
     return order_address_before_gst(normalized, "vendorAddress", "vendorGstNo")
 
 
@@ -170,6 +173,12 @@ def profile_rows_as_dicts(rows) -> list[dict]:
 
 MAGS_OUTWARD_CHALLAN_VENDOR_ID = "ven-mags-oc"
 
+VENDOR_TYPE_LABELS = {
+    "delivery": "Outward Challan",
+    "outward_challan": "Powder Coating",
+    "powder_coating": "Powder Coating Challan",
+}
+
 
 def normalize_vendor_data(data: dict) -> dict:
     """Normalize vendor JSON and validate vendor type."""
@@ -182,6 +191,7 @@ def normalize_vendor_data(data: dict) -> dict:
     if vendor_type == "outward_challan" and vendor_id != MAGS_OUTWARD_CHALLAN_VENDOR_ID:
         vendor_type = "delivery"
     normalized["vendorType"] = vendor_type
+    normalized["vendorTypeLabel"] = VENDOR_TYPE_LABELS.get(vendor_type, vendor_type)
     for key in ("personName", "phoneNo", "email", "gstNo"):
         if normalized.get(key) is None:
             normalized[key] = ""
