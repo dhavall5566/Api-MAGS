@@ -29,6 +29,8 @@ def order_address_before_gst(data: dict, address_key: str, gst_key: str) -> dict
 
     reordered: dict = {}
     gst_value = data.get(gst_key)
+    if isinstance(gst_value, str):
+        gst_value = gst_value.strip().upper()
     inserted_gst = False
 
     for key, value in data.items():
@@ -117,11 +119,23 @@ def normalize_challan_data(data: dict) -> dict:
             normalized.pop("totalWeightAllProfiles", None)
         normalized.pop("outwardChallanVendorId", None)
         normalized.pop("outwardChallanVendorName", None)
+        for key in ("deliveryChallanFromVendorId", "deliveryChallanFromVendorName"):
+            value = normalized.get(key)
+            if isinstance(value, str):
+                value = value.strip()
+                if value:
+                    normalized[key] = value
+                else:
+                    normalized.pop(key, None)
+            elif value is None:
+                normalized.pop(key, None)
     else:
         normalized.pop("totalBundles", None)
         normalized.pop("totalWeightManual", None)
         normalized.pop("totalNoOfProfiles", None)
         normalized.pop("totalWeightAllProfiles", None)
+        normalized.pop("deliveryChallanFromVendorId", None)
+        normalized.pop("deliveryChallanFromVendorName", None)
     if normalized.get("type") == "powder_coating":
         if not normalized.get("projectName") and normalized.get("remarks"):
             normalized["projectName"] = normalized["remarks"]
@@ -149,6 +163,9 @@ def normalize_challan_data(data: dict) -> dict:
         if normalized.get("type") != "powder_coating":
             normalized.pop("outwardChallanVendorId", None)
             normalized.pop("outwardChallanVendorName", None)
+        if normalized.get("type") != "outward":
+            normalized.pop("deliveryChallanFromVendorId", None)
+            normalized.pop("deliveryChallanFromVendorName", None)
     return order_address_before_gst(normalized, "vendorAddress", "vendorGstNo")
 
 
@@ -177,12 +194,20 @@ VENDOR_TYPE_LABELS = {
     "delivery": "Outward Challan",
     "outward_challan": "Powder Coating",
     "powder_coating": "Powder Coating Challan",
+    "delivery_challan_from": "Delivery Challan From",
+    "suppliers": "Suppliers",
 }
 
 
 def normalize_vendor_data(data: dict) -> dict:
     """Normalize vendor JSON and validate vendor type."""
-    allowed_types = {"delivery", "powder_coating", "outward_challan"}
+    allowed_types = {
+        "delivery",
+        "powder_coating",
+        "outward_challan",
+        "delivery_challan_from",
+        "suppliers",
+    }
     normalized = dict(data)
     vendor_type = str(normalized.get("vendorType") or "").strip()
     if vendor_type not in allowed_types:
@@ -192,11 +217,15 @@ def normalize_vendor_data(data: dict) -> dict:
         vendor_type = "delivery"
     normalized["vendorType"] = vendor_type
     normalized["vendorTypeLabel"] = VENDOR_TYPE_LABELS.get(vendor_type, vendor_type)
-    for key in ("personName", "phoneNo", "email", "gstNo"):
+    for key in ("personName", "phoneNo", "email"):
         if normalized.get(key) is None:
             normalized[key] = ""
         elif isinstance(normalized.get(key), str):
             normalized[key] = normalized[key].strip()
+    if isinstance(normalized.get("gstNo"), str):
+        normalized["gstNo"] = normalized["gstNo"].strip().upper()
+    elif normalized.get("gstNo") is None:
+        normalized["gstNo"] = ""
     if isinstance(normalized.get("partyName"), str):
         normalized["partyName"] = normalized["partyName"].strip()
     if isinstance(normalized.get("partyAddress"), str):
