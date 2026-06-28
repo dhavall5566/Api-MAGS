@@ -188,7 +188,53 @@ def profile_rows_as_dicts(rows) -> list[dict]:
     return [normalize_profile_data(row.data) for row in rows]
 
 
+def get_series_label(data: dict) -> str:
+    """Build the full series label stored on profiles (name + seriesNo + optional suffix)."""
+    name = str(data.get("name") or "").strip()
+    series_no = str(data.get("seriesNo") or "").strip()
+    base = f"{name}{series_no}"
+    suffix = str(data.get("seriesSuffix") or "").strip()
+    return f"{base} {suffix}" if suffix else base
+
+
+def count_profiles_for_series_label(db, label: str) -> int:
+    """Count profile master rows linked to a series label."""
+    from app.models import Profile
+
+    target = label.strip()
+    if not target:
+        return 0
+    count = 0
+    for row in db.query(Profile).all():
+        profile = normalize_profile_data(row.data)
+        if str(profile.get("seriesName") or "").strip() == target:
+            count += 1
+    return count
+
+
+def normalize_series_data(data: dict) -> dict:
+    """Strip computed fields before persisting series JSON."""
+    normalized = dict(data)
+    normalized.pop("profileCount", None)
+    return normalized
+
+
+def enrich_series_dict(db: Session, data: dict) -> dict:
+    """Attach live profile count from the profiles table."""
+    enriched = normalize_series_data(data)
+    enriched["profileCount"] = count_profiles_for_series_label(
+        db, get_series_label(enriched)
+    )
+    return enriched
+
+
+def series_rows_as_dicts(db: Session, rows) -> list[dict]:
+    return [enrich_series_dict(db, row.data) for row in rows]
+
+
 MAGS_OUTWARD_CHALLAN_VENDOR_ID = "ven-mags-oc"
+MAAHI_POWDER_COATING_VENDOR_ID = "ven-maahi-powder-coating"
+DELIVERY_FROM_POWDER_COATING_MIRROR_SUFFIX = "-powder-coating-mirror"
 
 VENDOR_TYPE_LABELS = {
     "delivery": "Outward Challan",
@@ -213,7 +259,12 @@ def normalize_vendor_data(data: dict) -> dict:
     if vendor_type not in allowed_types:
         vendor_type = "delivery"
     vendor_id = str(normalized.get("id") or "").strip()
-    if vendor_type == "outward_challan" and vendor_id != MAGS_OUTWARD_CHALLAN_VENDOR_ID:
+    if (
+        vendor_type == "outward_challan"
+        and vendor_id != MAGS_OUTWARD_CHALLAN_VENDOR_ID
+        and vendor_id != MAAHI_POWDER_COATING_VENDOR_ID
+        and not vendor_id.endswith(DELIVERY_FROM_POWDER_COATING_MIRROR_SUFFIX)
+    ):
         vendor_type = "delivery"
     normalized["vendorType"] = vendor_type
     normalized["vendorTypeLabel"] = VENDOR_TYPE_LABELS.get(vendor_type, vendor_type)
