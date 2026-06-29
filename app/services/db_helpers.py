@@ -329,16 +329,13 @@ def vendor_rows_as_dicts(rows) -> list[dict]:
 
 
 def merge_canonical_vendors(vendors: list[dict]) -> list[dict]:
-    """Ensure seeded canonical vendors are always present in API responses."""
-    by_id = {
-        vendor["id"]: vendor
+    """Return vendors from the database, excluding retired legacy entries."""
+    normalized = [
+        normalize_vendor_data(vendor)
         for vendor in vendors
         if vendor.get("id") and vendor["id"] not in RETIRED_VENDOR_IDS
-    }
-    for canonical in CANONICAL_VENDORS:
-        normalized = normalize_vendor_data(canonical)
-        by_id[normalized["id"]] = normalized
-    return sorted(by_id.values(), key=lambda vendor: vendor.get("partyName", ""))
+    ]
+    return sorted(normalized, key=lambda vendor: vendor.get("partyName", ""))
 
 
 def ensure_canonical_vendors(db: Session) -> None:
@@ -370,6 +367,19 @@ def normalize_stock_inward_data(data: dict) -> dict:
     if total_weight is not None:
         normalized["totalWeightKg"] = total_weight
         normalized["weight"] = total_weight
+
+    manual_weight = normalized.get("totalWeightManualKg")
+    if manual_weight is not None:
+        try:
+            manual_value = round(max(0, float(manual_weight)), 2)
+            if manual_value > 0:
+                normalized["totalWeightManualKg"] = manual_value
+            else:
+                normalized.pop("totalWeightManualKg", None)
+        except (TypeError, ValueError):
+            normalized.pop("totalWeightManualKg", None)
+    else:
+        normalized.pop("totalWeightManualKg", None)
 
     length = normalized.get("length")
     if length is not None:
@@ -476,38 +486,47 @@ def split_stock_inward_entry(
     split_at = date.today().isoformat()
     parent_qty = float(parent.get("quantity") or 0)
     kg_per_meter = float(parent.get("kgPerMeter") or 0)
+    parent_weight = float(parent.get("totalWeightKg") or parent.get("weight") or 0)
+    parent_manual = parent.get("totalWeightManualKg")
     inward_nos = generate_inward_nos(existing, len(pieces))
 
     children: list[dict] = []
     for index, piece in enumerate(pieces):
         length = normalize_stock_length(piece.get("length") or 0)
         total_weight_kg = calculate_total_weight_kg(parent_qty, length, kg_per_meter)
+        manual_weight = None
+        if parent_manual is not None and parent_weight > 0:
+            try:
+                manual_weight = round(max(0, float(parent_manual) * total_weight_kg / parent_weight), 2)
+                if manual_weight <= 0:
+                    manual_weight = None
+            except (TypeError, ValueError):
+                manual_weight = None
         child_id = piece.get("id") or f"si-{parent_id}-split-{index + 1}"
-        children.append(
-            normalize_stock_inward_data(
-                {
-                    "id": child_id,
-                    "inwardNo": inward_nos[index],
-                    "invoiceNo": parent.get("invoiceNo"),
-                    "date": split_at,
-                    "supplier": parent.get("supplier"),
-                    "dyeCode": parent.get("dyeCode"),
-                    "profileCode": parent.get("profileCode"),
-                    "profileName": parent.get("profileName"),
-                    "profileImage": parent.get("profileImage"),
-                    "totalWeightKg": total_weight_kg,
-                    "length": length,
-                    "kgPerMeter": kg_per_meter,
-                    "quantity": parent_qty,
-                    "weight": total_weight_kg,
-                    "splitFromId": parent.get("id"),
-                    "splitFromInwardNo": parent.get("inwardNo"),
-                    "splitAt": split_at,
-                    "status": "active",
-                    "remarks": parent.get("remarks"),
-                }
-            )
-        )
+        child_payload = {
+            "id": child_id,
+            "inwardNo": inward_nos[index],
+            "invoiceNo": parent.get("invoiceNo"),
+            "date": split_at,
+            "supplier": parent.get("supplier"),
+            "dyeCode": parent.get("dyeCode"),
+            "profileCode": parent.get("profileCode"),
+            "profileName": parent.get("profileName"),
+            "profileImage": parent.get("profileImage"),
+            "totalWeightKg": total_weight_kg,
+            "length": length,
+            "kgPerMeter": kg_per_meter,
+            "quantity": parent_qty,
+            "weight": total_weight_kg,
+            "splitFromId": parent.get("id"),
+            "splitFromInwardNo": parent.get("inwardNo"),
+            "splitAt": split_at,
+            "status": "active",
+            "remarks": parent.get("remarks"),
+        }
+        if manual_weight is not None:
+            child_payload["totalWeightManualKg"] = manual_weight
+        children.append(normalize_stock_inward_data(child_payload))
 
     updated_parent = normalize_stock_inward_data(
         {
@@ -519,6 +538,7 @@ def split_stock_inward_entry(
             "quantity": 0,
         }
     )
+    updated_parent.pop("totalWeightManualKg", None)
 
     upsert_entity(db, StockInward, updated_parent)
     saved_children = [upsert_entity(db, StockInward, child) for child in children]

@@ -17,14 +17,11 @@ from app.models import (
     StockInward,
     StockLedgerEntry,
     User,
-    Vendor,
 )
 from app.services.db_helpers import (
-    merge_canonical_vendors,
     normalize_profile_data,
     normalize_series_data,
     normalize_stock_inward_data,
-    normalize_vendor_data,
     upsert_entities,
 )
 
@@ -33,7 +30,6 @@ SEED_DIR = Path(__file__).resolve().parent.parent.parent / "seed" / "data"
 ENTITY_SEEDS: list[tuple[str, type, Callable[[dict], dict] | None]] = [
     ("profiles", Profile, normalize_profile_data),
     ("users", User, None),
-    ("vendors", Vendor, normalize_vendor_data),
     ("series", SeriesName, normalize_series_data),
     ("stock_inward", StockInward, normalize_stock_inward_data),
     ("stock_ledger", StockLedgerEntry, None),
@@ -71,17 +67,6 @@ def sync_all_seed_data(db: Session) -> None:
         count = _sync_entity_list(db, filename, model, normalizer)
         if count:
             synced[filename] = count
-
-    # Ensure canonical vendors (e.g. MAAHI delivery challan from) are always present.
-    from app.services.db_helpers import CANONICAL_VENDORS, normalize_vendor_data as norm_vendor
-
-    rows = db.query(Vendor).all()
-    by_id = {row.id: norm_vendor(row.data) for row in rows}
-    for canonical in CANONICAL_VENDORS:
-        normalized = norm_vendor(canonical)
-        by_id[normalized["id"]] = normalized
-    upsert_entities(db, Vendor, list(by_id.values()))
-    db.commit()
 
     if synced:
         print("Seed sync:", ", ".join(f"{key}={value}" for key, value in synced.items()))

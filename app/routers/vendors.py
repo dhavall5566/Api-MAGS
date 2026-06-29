@@ -5,7 +5,6 @@ from app.database import get_db
 from app.models import Vendor
 from app.services.db_helpers import (
     delete_entity,
-    ensure_canonical_vendors,
     merge_canonical_vendors,
     normalize_vendor_data,
     upsert_entity,
