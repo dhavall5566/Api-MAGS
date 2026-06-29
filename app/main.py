@@ -2,8 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.database import init_db
+from app.database import SessionLocal, init_db
+from app.services.seed_sync import sync_all_seed_data
 from app.routers import (
+    app_settings,
     challans,
     consumption,
     dashboard,
@@ -34,6 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(app_settings.router)
 app.include_router(profiles.router)
 app.include_router(users.router)
 app.include_router(vendors.router)
@@ -53,6 +56,11 @@ app.include_router(uploads.router)
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    db = SessionLocal()
+    try:
+        sync_all_seed_data(db)
+    finally:
+        db.close()
 
 
 @app.get("/health")

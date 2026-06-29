@@ -234,7 +234,37 @@ def series_rows_as_dicts(db: Session, rows) -> list[dict]:
 
 MAGS_OUTWARD_CHALLAN_VENDOR_ID = "ven-mags-oc"
 MAAHI_POWDER_COATING_VENDOR_ID = "ven-maahi-powder-coating"
+MAAHI_DELIVERY_CHALLAN_FROM_VENDOR_ID = "ven-maahi-delivery-challan-from"
 DELIVERY_FROM_POWDER_COATING_MIRROR_SUFFIX = "-powder-coating-mirror"
+
+RETIRED_VENDOR_IDS = {
+    "ven-delivery-challan-from",
+    f"ven-delivery-challan-from{DELIVERY_FROM_POWDER_COATING_MIRROR_SUFFIX}",
+    f"ven-maahi-delivery-challan-from{DELIVERY_FROM_POWDER_COATING_MIRROR_SUFFIX}",
+}
+
+MAAHI_VENDOR_DETAILS = {
+    "partyName": "MAAHI ALUGLAZE SYSTEM",
+    "partyAddress": "04, Umiya Industrial Park, Chhatral G.I.D.C, Phase-3, Ta: Kalol, Dist : Gandhinagar, Gujarat-382729",
+    "personName": "Brijesh Prajapati",
+    "phoneNo": "9974293086",
+    "email": "brij.prajapati07@gmail.com",
+    "gstNo": "24BHUPP0334A1ZM",
+    "challanHeaderName": "MAAHI ALUGLAZE SYSTEM",
+    "challanAddressLine1": "04, Umiya Industrial Park, Chhatral G.I.D.C, Phase-3",
+    "challanAddressLine2": "Ta: Kalol, Dist : Gandhinagar, Gujarat-382729",
+    "challanEmail": "brij.prajapati07@gmail.com",
+    "challanPhone": "9974293086",
+    "challanSignatoryLine": "For, MAAHI ALUGLAZE SYSTEM",
+}
+
+CANONICAL_VENDORS = [
+    {
+        "id": MAAHI_DELIVERY_CHALLAN_FROM_VENDOR_ID,
+        **MAAHI_VENDOR_DETAILS,
+        "vendorType": "delivery_challan_from",
+    },
+]
 
 VENDOR_TYPE_LABELS = {
     "delivery": "Outward Challan",
@@ -296,6 +326,25 @@ def normalize_vendor_data(data: dict) -> dict:
 
 def vendor_rows_as_dicts(rows) -> list[dict]:
     return [normalize_vendor_data(row.data) for row in rows]
+
+
+def merge_canonical_vendors(vendors: list[dict]) -> list[dict]:
+    """Ensure seeded canonical vendors are always present in API responses."""
+    by_id = {
+        vendor["id"]: vendor
+        for vendor in vendors
+        if vendor.get("id") and vendor["id"] not in RETIRED_VENDOR_IDS
+    }
+    for canonical in CANONICAL_VENDORS:
+        normalized = normalize_vendor_data(canonical)
+        by_id[normalized["id"]] = normalized
+    return sorted(by_id.values(), key=lambda vendor: vendor.get("partyName", ""))
+
+
+def ensure_canonical_vendors(db: Session) -> None:
+    for canonical in CANONICAL_VENDORS:
+        upsert_entity(db, Vendor, normalize_vendor_data(canonical))
+    db.commit()
 
 
 def normalize_purchase_order_data(data: dict) -> dict:

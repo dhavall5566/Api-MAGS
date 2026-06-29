@@ -5,6 +5,8 @@ from app.database import get_db
 from app.models import Vendor
 from app.services.db_helpers import (
     delete_entity,
+    ensure_canonical_vendors,
+    merge_canonical_vendors,
     normalize_vendor_data,
     upsert_entity,
     vendor_rows_as_dicts,
@@ -16,7 +18,7 @@ router = APIRouter(prefix="/api/vendors", tags=["vendors"])
 @router.get("")
 def list_vendors(db: Session = Depends(get_db)):
     rows = db.query(Vendor).all()
-    return {"vendors": vendor_rows_as_dicts(rows)}
+    return {"vendors": merge_canonical_vendors(vendor_rows_as_dicts(rows))}
 
 
 @router.post("")
