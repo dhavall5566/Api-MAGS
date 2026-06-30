@@ -388,7 +388,8 @@ def get_vendor_delete_associations(db: Session, vendor: dict) -> list[dict]:
     stock_rows = [
         row.data
         for row in db.query(StockInward).all()
-        if _matches_vendor_name(vendor, (row.data or {}).get("supplier"))
+        if (row.data or {}).get("status") != "split"
+        and _matches_vendor_name(vendor, (row.data or {}).get("supplier"))
     ]
     if stock_rows:
         associations.append(
