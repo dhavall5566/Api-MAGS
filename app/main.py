@@ -9,6 +9,7 @@ from app.routers import (
     challans,
     consumption,
     dashboard,
+    notifications,
     powder_coating,
     profiles,
     purchase_orders,
@@ -49,6 +50,7 @@ app.include_router(scrap.router)
 app.include_router(challans.router)
 app.include_router(purchase_orders.router)
 app.include_router(dashboard.router)
+app.include_router(notifications.router)
 app.include_router(reports.router)
 app.include_router(uploads.router)
 

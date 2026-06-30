@@ -338,6 +338,164 @@ def merge_canonical_vendors(vendors: list[dict]) -> list[dict]:
     return sorted(normalized, key=lambda vendor: vendor.get("partyName", ""))
 
 
+def _normalize_party_name(value) -> str:
+    return str(value or "").strip().lower()
+
+
+def _vendor_name_aliases(vendor: dict) -> set[str]:
+    aliases = {
+        _normalize_party_name(vendor.get("partyName")),
+        _normalize_party_name(vendor.get("challanHeaderName")),
+    }
+    aliases.discard("")
+    return aliases
+
+
+def _matches_vendor_name(vendor: dict, value) -> bool:
+    normalized = _normalize_party_name(value)
+    return bool(normalized and normalized in _vendor_name_aliases(vendor))
+
+
+def _matches_vendor_id(vendor_id: str, value) -> bool:
+    return str(value or "").strip() == vendor_id
+
+
+def _collect_reference_examples(rows: list[dict], ref_key: str) -> list[str]:
+    examples: list[str] = []
+    for row in rows[:3]:
+        ref = str(row.get(ref_key) or row.get("id") or "").strip()
+        if ref:
+            examples.append(ref)
+    return examples
+
+
+def _build_vendor_association(module: str, label: str, rows: list[dict], ref_key: str) -> dict:
+    return {
+        "module": module,
+        "count": len(rows),
+        "label": label,
+        "examples": _collect_reference_examples(rows, ref_key),
+    }
+
+
+def get_vendor_delete_associations(db: Session, vendor: dict) -> list[dict]:
+    """Find records that reference this vendor and block deletion."""
+    from app.models import Challan, PowderCoating, PurchaseOrder, StockInward
+
+    vendor_id = str(vendor.get("id") or "").strip()
+    associations: list[dict] = []
+
+    stock_rows = [
+        row.data
+        for row in db.query(StockInward).all()
+        if _matches_vendor_name(vendor, (row.data or {}).get("supplier"))
+    ]
+    if stock_rows:
+        associations.append(
+            _build_vendor_association(
+                "Stock Inward",
+                "stock inward record(s)",
+                stock_rows,
+                "inwardNo",
+            )
+        )
+
+    purchase_order_rows = [
+        row.data
+        for row in db.query(PurchaseOrder).all()
+        if _matches_vendor_name(vendor, (row.data or {}).get("vendorName"))
+    ]
+    if purchase_order_rows:
+        associations.append(
+            _build_vendor_association(
+                "Purchase Orders",
+                "purchase order(s)",
+                purchase_order_rows,
+                "poNumber",
+            )
+        )
+
+    outward_rows: list[dict] = []
+    coating_challan_rows: list[dict] = []
+    return_rows: list[dict] = []
+    for row in db.query(Challan).all():
+        data = row.data or {}
+        linked = (
+            _matches_vendor_name(vendor, data.get("vendorName"))
+            or _matches_vendor_name(vendor, data.get("deliveryChallanFromVendorName"))
+            or _matches_vendor_name(vendor, data.get("outwardChallanVendorName"))
+            or _matches_vendor_id(vendor_id, data.get("deliveryChallanFromVendorId"))
+            or _matches_vendor_id(vendor_id, data.get("outwardChallanVendorId"))
+        )
+        if not linked:
+            continue
+        challan_type = data.get("type")
+        if challan_type == "powder_coating":
+            coating_challan_rows.append(data)
+        elif challan_type == "return":
+            return_rows.append(data)
+        else:
+            outward_rows.append(data)
+
+    if outward_rows:
+        associations.append(
+            _build_vendor_association(
+                "Outward Challans",
+                "outward challan(s)",
+                outward_rows,
+                "challanNumber",
+            )
+        )
+    if coating_challan_rows:
+        associations.append(
+            _build_vendor_association(
+                "Powder Coating Challans",
+                "powder coating challan(s)",
+                coating_challan_rows,
+                "challanNumber",
+            )
+        )
+    if return_rows:
+        associations.append(
+            _build_vendor_association(
+                "Return Challans",
+                "return challan(s)",
+                return_rows,
+                "challanNumber",
+            )
+        )
+
+    powder_coating_rows = [
+        row.data
+        for row in db.query(PowderCoating).all()
+        if _matches_vendor_name(vendor, (row.data or {}).get("vendor"))
+    ]
+    if powder_coating_rows:
+        associations.append(
+            _build_vendor_association(
+                "Powder Coating",
+                "powder coating batch(es)",
+                powder_coating_rows,
+                "batchNo",
+            )
+        )
+
+    return associations
+
+
+def format_vendor_delete_block_message(vendor_name: str, associations: list[dict]) -> str:
+    lines = [f"Cannot delete {vendor_name} because it is used in:"]
+    for item in associations:
+        line = f"• {item['count']} {item['label']}"
+        examples = item.get("examples") or []
+        if examples:
+            line += f": {', '.join(examples)}"
+        lines.append(line)
+    lines.append("")
+    lines.append("Delete those records first, then try again.")
+    return "\n".join(lines)
+
+
 def ensure_canonical_vendors(db: Session) -> None:
     for canonical in CANONICAL_VENDORS:
         upsert_entity(db, Vendor, normalize_vendor_data(canonical))

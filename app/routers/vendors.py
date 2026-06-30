@@ -5,6 +5,8 @@ from app.database import get_db
 from app.models import Vendor
 from app.services.db_helpers import (
     delete_entity,
+    format_vendor_delete_block_message,
+    get_vendor_delete_associations,
     merge_canonical_vendors,
     normalize_vendor_data,
     upsert_entity,
@@ -43,6 +45,19 @@ def update_vendor(vendor_id: str, body: dict, db: Session = Depends(get_db)):
 
 @router.delete("/{vendor_id}")
 def remove_vendor(vendor_id: str, db: Session = Depends(get_db)):
+    row = db.get(Vendor, vendor_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+
+    vendor = normalize_vendor_data(row.data)
+    associations = get_vendor_delete_associations(db, vendor)
+    if associations:
+        vendor_name = str(vendor.get("partyName") or vendor_id).strip()
+        raise HTTPException(
+            status_code=409,
+            detail=format_vendor_delete_block_message(vendor_name, associations),
+        )
+
     if not delete_entity(db, Vendor, vendor_id):
         raise HTTPException(status_code=404, detail="Vendor not found")
     return {"ok": True, "id": vendor_id}
